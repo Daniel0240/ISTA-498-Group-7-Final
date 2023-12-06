@@ -1,0 +1,12 @@
+name: Amazonreport
+title: Amazonreport
+username: namigalakbar
+account: namigalakbar
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 10664471
+bundleId: 8013778
+url: https://namigalakbar.shinyapps.io/Amazonreport/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
