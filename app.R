@@ -1,116 +1,71 @@
-#Namig Alakbarzade
-#Senior CAPSTONE
-#
-# This is a Shiny web application. You can run the application by clicking
-# the 'Run App' button above.
-#
-# Find out more about building applications with Shiny here:
-#
-#    http://shiny.rstudio.com/
-#
+# Linear Regression Model
 
 library(shiny)
+library(shinydashboard)
 library(ggplot2)
 library(dplyr)
-library(plotly)
+library(stringr)
+library(readxl)
+library(tidyr)
 
-# Reading the CSV file
-amazon_data <- read.csv("defined_amazon.csv")
+# Load data
+Amazon_Sale_Report <- read_excel("~/Greg's School/ISTA 498/Amazon Sale Report.xlsx")
+ASR <- Amazon_Sale_Report
 
-# Convert RatingCount to integers
-amazon_data$RatingCount <- as.integer(amazon_data$RatingCount)
+ASR$`promotion_ids` <- str_replace_all(ASR$`promotion_ids`, 'Amazon PLCC Free-Financing Universal Merchant AAT','Yes')
+ASR$`promotion_ids` <- str_replace_all(ASR$`promotion_ids`, 'IN Core Free Shipping','Yes')
+ASR$`promotion_ids` <- str_replace_all(ASR$`promotion_ids`, 'VPC-44571 Coupon','Yes')
 
-# Fit a linear regression model
-model <- lm(Rating ~ RatingCount, data = amazon_data)
+m1 <- lm(Amount ~ discounted_price + rating, data = ASR)
 
-# Define UI
-ui <- fluidPage(
-  theme = shinythemes::shinytheme("flatly"),  # Apply a colorful theme
-  titlePanel("Product Rating Prediction", windowTitle = "Product Rating"),
-  sidebarLayout(
-    sidebarPanel(
-      div(
-        style = "background-color: beige; padding: 10px;",
-        textOutput("prediction_result")  # Output element for prediction result
-      ),
-      numericInput("rating_count", "Rating Count:", value = 1000, min = 0),
-      actionButton("predict_btn", "Predict", class = "btn-success"),
-      hr(),
-      downloadButton("save_plots_btn", "Save Plots as PNG", class = "btn-primary")
-    ),
-    mainPanel(
-      plotOutput("scatter_plot"),
-      plotOutput("bar_chart"),
-      plotOutput("histogram"),
-      plotlyOutput("pie_chart"),
-      plotlyOutput("line_graph")
+# UI
+ui <- dashboardPage(
+  dashboardHeader(title = "Template for Variables"),
+  dashboardSidebar(
+    selectInput("variable", "Variable", choices = c("discounted_price", "rating","rating_count","Qty","Savings" )),
+    actionButton("update", "Update Plot")
+  ),
+  dashboardBody(
+    fluidRow(
+      box(
+        title = "Test",
+        status = "primary",
+        solidHeader = TRUE,
+        plotOutput("salesPlot")
+      )
     )
   )
 )
 
-# Define Server
-server <- function(input, output) {
+# Server
+server <- function(input, output, session) {
   
-  # Generate scatter plot based on the training data
-  output$scatter_plot <- renderPlot({
-    ggplot(amazon_data, aes(x = RatingCount, y = Rating)) +
-      geom_point(color = "steelblue") +
-      geom_smooth(method = "lm", color = "red") +
-      labs(title = "Product Rating vs. Rating Count", x = "Rating Count", y = "Rating") +
-      theme(plot.title = element_text(color = "darkblue", size = 16, face = "bold"),
-            axis.title = element_text(color = "darkgreen", size = 12, face = "bold"))
+  filtered_data <- reactive({
+    ASR %>%
+      select("Amount", input$variable)
   })
   
-  # Generate bar chart
-  output$bar_chart <- renderPlot({
-    rating_counts <- table(amazon_data$Rating)
-    bar_chart <- ggplot(data.frame(rating = names(rating_counts), count = as.numeric(rating_counts)),
-                        aes(x = rating, y = count)) +
-      geom_bar(stat = "identity", fill = "burlywood1") +
-      labs(title = "Count of Ratings", x = "Rating", y = "Count") +
-      theme(plot.title = element_text(color = "darkblue", size = 18, face = "bold"),
-            axis.title = element_text(color = "darkgreen", size = 14, face = "bold"))
-    print(bar_chart)
-  })
+  observeEvent(input$update, {
   
-  # Generating the pie chrart
-  output$pie_chart <- renderPlotly({
-    rating_counts <- table(amazon_data$Rating)
-    pie_chart <- plot_ly(
-      labels = names(rating_counts),
-      values = as.numeric(rating_counts),
-      type = "pie",
-      hole = 0.2
-    )
-    pie_chart %>%
-      layout(showlegend = FALSE, margin = list(b = 0)) %>%
-      config(displayModeBar = FALSE)
+    updated_model <- lm(formula = as.formula(paste("Amount ~", input$variable)), data = ASR)
+    
+ 
+    x_val <- seq(from = min(ASR[[input$variable]]), to = max(ASR[[input$variable]]), length.out = nrow(ASR))
+    
+
+    y_pred <- predict(updated_model, newdata = data.frame(filtered_data()))
+    
+    # Plot
+    output$salesPlot <- renderPlot({
+      ggplot(ASR, aes_string(x = input$variable, y = "Amount")) +
+        geom_point() +
+        geom_line(aes(x = x_val, y = y_pred), color = "blue") +
+        labs(title = paste("Sales Performance vs.", input$variable),
+             x = input$variable, y = "Amount")
+    })
   })
-  
-  # Generate histogram
-  output$histogram <- renderPlot({
-    ggplot(amazon_data, aes(x = RatingCount)) +
-      geom_histogram(binwidth = 100, color = "steelblue", fill = "steelblue", alpha = 0.7) +
-      labs(title = "Rating Count Distribution", x = "Rating Count", y = "Frequency") +
-      theme(plot.title = element_text(color = "purple", size = 18, face = "bold"),
-            axis.title = element_text(color = "red", size = 14, face = "bold"))
-  })
-  
-  # Predicting the rating based on user input
-  output$prediction_result <- renderText({
-    req(input$predict_btn)  # Wait for the button to be clicked
-    new_data <- data.frame(RatingCount = as.numeric(input$rating_count))  # Convert to numeric
-    predicted_rating <- predict(model, newdata = new_data)
-    paste("Predicted Rating:", predicted_rating)
-  })
-  
-  #Save plots as PNG
-  observeEvent(input$save_plots_btn, {
-    ggsave("scatter_plot.png", output$scatter_plot())
-    ggsave("bar_chart.png", output$bar_chart())
-    ggsave("histogram.png", output$histogram())
-  }) 
 }
 
-# Running the Shiny App
-shinyApp(ui = ui, server = server)
+
+# Run the application
+shinyApp(ui, server)
