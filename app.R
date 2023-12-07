@@ -1,100 +1,115 @@
-# MultiLinear Regression Model
+#Namig Alakbarzade
+#Senior CAPSTONE
+#
+# This is a Shiny web application. You can run the application by clicking
+# the 'Run App' button above.
+#
+# Find out more about building applications with Shiny here:
+#
+#    http://shiny.rstudio.com/
 
 library(shiny)
-library(shinydashboard)
-library(shinythemes)
 library(ggplot2)
 library(dplyr)
-library(stringr)
-library(readxl)
-library(tidyr)
-library(tidymodels)
+library(plotly)
 
-Amazon_Sale_Report <- read_excel("~/Greg's School/ISTA 498/Amazon Sale Report.xlsx")
-ASR <- Amazon_Sale_Report
+# Reading the CSV file
+amazon_data <- read.csv("defined_amazon.csv")
 
-ui <- dashboardPage(
-  dashboardHeader(title = "Multilinear Regression Model" ,titleWidth = 300),
-  dashboardSidebar(
-    selectInput("variable1", "Variable 1", choices = colnames(ASR)),
-    selectInput("variable2", "Variable 2", choices = colnames(ASR)),
-    selectInput("variable3", "Variable 3", choices = colnames(ASR)),
-    actionButton("update", "Update Model")
-  ),
-  dashboardBody(
-    fluidRow(
-      box(
-        title = "Sales Forecast Analysis Model",
-        status = "primary",
-        solidHeader = TRUE,
-        plotOutput("salesPlot")
+# Convert RatingCount to integers
+amazon_data$RatingCount <- as.integer(amazon_data$RatingCount)
+
+# Fit a linear regression model
+model <- lm(Rating ~ RatingCount, data = amazon_data)
+
+# Define UI
+ui <- fluidPage(
+  theme = shinythemes::shinytheme("flatly"),  # Apply a colorful theme
+  titlePanel("Product Rating Prediction", windowTitle = "Product Rating"),
+  sidebarLayout(
+    sidebarPanel(
+      div(
+        style = "background-color: beige; padding: 10px;",
+        textOutput("prediction_result")  # Output element for prediction result
       ),
-      box(
-        title = "P-Values and Variance",
-        status = "primary",
-        solidHeader = TRUE,
-        textOutput("pValuesOutput"),
-        textOutput("varianceOutput"),
-        textOutput("pValueMessage"),
-        textOutput("varianceMessage")
-      )
+      numericInput("rating_count", "Rating Count:", value = 1000, min = 0),
+      actionButton("predict_btn", "Predict", class = "btn-success"),
+      hr(),
+      downloadButton("save_plots_btn", "Save Plots as PNG", class = "btn-primary")
+    ),
+    mainPanel(
+      plotOutput("scatter_plot"),
+      plotOutput("bar_chart"),
+      plotOutput("histogram"),
+      plotlyOutput("pie_chart"),
+      plotlyOutput("line_graph")
     )
   )
 )
 
-server <- function(input, output, session) {
+# Define Server
+server <- function(input, output) {
   
-  filtered_data <- reactive({
-    ASR %>%
-      select("Amount", input$variable1, input$variable2, input$variable3)
+  # Generate scatter plot based on the training data
+  output$scatter_plot <- renderPlot({
+    ggplot(amazon_data, aes(x = RatingCount, y = Rating)) +
+      geom_point(color = "steelblue") +
+      geom_smooth(method = "lm", color = "red") +
+      labs(title = "Product Rating vs. Rating Count", x = "Rating Count", y = "Rating") +
+      theme(plot.title = element_text(color = "darkblue", size = 16, face = "bold"),
+            axis.title = element_text(color = "darkgreen", size = 12, face = "bold"))
   })
   
-  observeEvent(input$update, {
-    output$salesPlot <- renderPlot({
-      
-      model <- lm(Amount ~ ., data = filtered_data())
-      
-      predictions <- predict(model, filtered_data())
-      
-      ggplot(filtered_data(), aes(x = predictions, y = Amount)) +
-        geom_point() +
-        geom_smooth(method = "lm", se = FALSE, color = "red") +
-        labs(title = "Multilinear Regression Plot",
-             x = "Predicted Amount",
-             y = "Actual Amount")
-    })
-    
-  
-    summary_data <- summary(lm(Amount ~ ., data = filtered_data()))
-    p_values <- summary_data$coefficients[, 4]
-    variance <- summary_data$sigma
-    
-    output$pValuesOutput <- renderText({
-      paste("P-values: ", paste(round(p_values, 4), collapse = ", "))
-    })
-    
-    output$varianceOutput <- renderText({
-      paste("Variance: ", round(variance, 4))
-    })
-    
-  
-    output$pValueMessage <- renderText({
-      if (all(p_values < 0.05)) {
-        "The p-values are good!"
-      } else {
-        "P-values are poor, try other variables for better significance."
-      }
-    })
-    
-    # Check if variance is good and display a message
-    output$varianceMessage <- renderText({
-      if (variance < 0.1) {
-        "Variance is good!"
-      } else {
-        "Variance is poor, check model fit."
-      }
-    })
+  # Generate bar chart
+  output$bar_chart <- renderPlot({
+    rating_counts <- table(amazon_data$Rating)
+    bar_chart <- ggplot(data.frame(rating = names(rating_counts), count = as.numeric(rating_counts)),
+                        aes(x = rating, y = count)) +
+      geom_bar(stat = "identity", fill = "burlywood1") +
+      labs(title = "Count of Ratings", x = "Rating", y = "Count") +
+      theme(plot.title = element_text(color = "darkblue", size = 18, face = "bold"),
+            axis.title = element_text(color = "darkgreen", size = 14, face = "bold"))
+    print(bar_chart)
   })
+  
+  # Generating the pie chrart
+  output$pie_chart <- renderPlotly({
+    rating_counts <- table(amazon_data$Rating)
+    pie_chart <- plot_ly(
+      labels = names(rating_counts),
+      values = as.numeric(rating_counts),
+      type = "pie",
+      hole = 0.2
+    )
+    pie_chart %>%
+      layout(showlegend = FALSE, margin = list(b = 0)) %>%
+      config(displayModeBar = FALSE)
+  })
+  
+  # Generate histogram
+  output$histogram <- renderPlot({
+    ggplot(amazon_data, aes(x = RatingCount)) +
+      geom_histogram(binwidth = 100, color = "steelblue", fill = "steelblue", alpha = 0.7) +
+      labs(title = "Rating Count Distribution", x = "Rating Count", y = "Frequency") +
+      theme(plot.title = element_text(color = "purple", size = 18, face = "bold"),
+            axis.title = element_text(color = "red", size = 14, face = "bold"))
+  })
+  
+  # Predicting the rating based on user input
+  output$prediction_result <- renderText({
+    req(input$predict_btn)  # Wait for the button to be clicked
+    new_data <- data.frame(RatingCount = as.numeric(input$rating_count))  # Convert to numeric
+    predicted_rating <- predict(model, newdata = new_data)
+    paste("Predicted Rating:", predicted_rating)
+  })
+  
+  #Save plots as PNG
+  observeEvent(input$save_plots_btn, {
+    ggsave("scatter_plot.png", output$scatter_plot())
+    ggsave("bar_chart.png", output$bar_chart())
+    ggsave("histogram.png", output$histogram())
+  }) 
 }
 
-shinyApp(ui, server)
+# Running the Shiny App
+shinyApp(ui = ui, server = server)
